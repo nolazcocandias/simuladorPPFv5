@@ -40,16 +40,23 @@ document.querySelector(".btn-simular")?.addEventListener("click", async () => {
 
     const data = await resp.json();
 
-    // Tarjetas
-    const ppEl = document.querySelector("#pp-value");
-    const tradEl = document.querySelector("#tradicional-value");
-    const ahoEl = document.querySelector("#ahorro-value");
-    if (ppEl) ppEl.textContent = Number(data.palletParking ?? 0).toLocaleString("es-CL");
-    if (tradEl) tradEl.textContent = Number(data.tradicional ?? 0).toLocaleString("es-CL");
-    if (ahoEl) ahoEl.textContent = Number(data.ahorro ?? 0).toLocaleString("es-CL");
+    // Mapear resultados a los elementos reales del HTML (revisar ids en index.html)
+    // Intentamos varias ids por compatibilidad con distintas versiones del HTML
+    const setIfExists = (selector, value) => {
+      const el = document.querySelector(selector);
+      if (el) el.textContent = value;
+    };
 
-    // Tabla
-    const tbody = document.querySelector("#tabla-resultados tbody");
+    // Los valores devueltos por el backend son números (suponiendo CLP)
+    setIfExists("#ppUF", Number(data.palletParking ?? 0).toLocaleString("es-CL"));
+    setIfExists("#ppCLP", Number(data.palletParking ?? 0).toLocaleString("es-CL"));
+    setIfExists("#tradUF", Number(data.tradicional ?? 0).toLocaleString("es-CL"));
+    setIfExists("#tradCLP", Number(data.tradicional ?? 0).toLocaleString("es-CL"));
+    setIfExists("#ahorroUF", Number(data.ahorro ?? 0).toLocaleString("es-CL"));
+    setIfExists("#ahorroCLP", Number(data.ahorro ?? 0).toLocaleString("es-CL"));
+
+    // Tabla: el HTML tiene id="tabla"
+    const tbody = document.querySelector("#tabla tbody");
     if (tbody) {
       tbody.innerHTML = "";
       (data.tabla ?? []).forEach(row => {
@@ -65,6 +72,6 @@ document.querySelector(".btn-simular")?.addEventListener("click", async () => {
     }
   } catch (error) {
     console.error("Error al simular:", error);
-    alert("Hubo un problema al procesar la simulación. Revisa la consola para más detalles.");
+    alert("Hubo un problema al procesar la simulación. Abre la consola para ver más detalles.");
   }
 });
