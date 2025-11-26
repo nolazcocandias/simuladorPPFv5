@@ -1,4 +1,5 @@
-// script.js (cliente) - recálculo seguro en navegador
+// script.js - cliente: escribe en el xlsx en memoria y recalcula (o hace fallback manual)
+// Asegúrate de tener simulacion.xlsx en la misma carpeta que index.html
 const EXCEL_PATH = './simulacion.xlsx';
 
 async function obtenerUF() {
@@ -25,14 +26,13 @@ function generarMovimientos(pallets, meses) {
   return { inVals, outVals };
 }
 
-// helpers detección estricta calcFn
+// --- Helpers para detectar xlsx-calc de forma estricta ---
 function isNativeFunction(fn) {
   try { return typeof fn === 'function' && /\{\s*\[native code\]\s*\}/.test(Function.prototype.toString.call(fn)); }
   catch (e) { return false; }
 }
 
 function getCalcFnStrict() {
-  // nombres preferidos globales
   const prefer = ['XLSX_CALC', 'xlsx_calc', 'xlsx-calc', 'xlsxCalc', 'xlsxCalcLib', 'xlsxcalc', 'XlsxCalc'];
   for (const name of prefer) {
     try {
@@ -46,8 +46,7 @@ function getCalcFnStrict() {
       }
     } catch (e) { /* ignore */ }
   }
-
-  // heurística estricta en globals: buscar objetos con claves típicas
+  // heurística amplia
   for (const k of Object.keys(window)) {
     try {
       const val = window[k];
@@ -60,12 +59,11 @@ function getCalcFnStrict() {
       }
     } catch (e) { /* ignore */ }
   }
-
-  console.warn('getCalcFnStrict: no se detectó xlsx-calc en globals. Asegúrate que index.html carga xlsx-calc@0.4.0 ANTES de script.js');
+  console.warn('getCalcFnStrict: no se detectó xlsx-calc en globals. Asegúrate de cargar xlsx-calc antes de este script');
   return null;
 }
 
-// ensure references exist (evita undefined en xlsx-calc)
+// --- Asegurar que referencias en fórmulas tienen objetos de celdas (evita undefined .calc) ---
 function ensureReferencedCellsExist(workbook) {
   const created = [];
   const cellRefRegex = /(?:(?:'([^']+)'|([A-Za-z0-9_]+))!)?([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?/g;
@@ -109,11 +107,40 @@ function ensureReferencedCellsExist(workbook) {
   return created;
 }
 
+// --- Cálculo manual seguro de KPIs (fallback si xlsx-calc no está disponible) ---
+function computeManualKPIs(sheet) {
+  function colToNum(col) { let n = 0; for (let i = 0; i < col.length; i++) n = n * 26 + (col.charCodeAt(i) - 64); return n; }
+  function numToCol(n) { let s = ''; while (n > 0) { const rem = (n - 1) % 26; s = String.fromCharCode(65 + rem) + s; n = Math.floor((n - 1) / 26); } return s; }
+  function sumRowRange(sheet, row, colStart, colEnd) {
+    const startNum = colToNum(colStart), endNum = colToNum(colEnd);
+    let sum = 0;
+    for (let c = startNum; c <= endNum; c++) {
+      const addr = numToCol(c) + row;
+      const v = sheet[addr]?.v ?? 0;
+      sum += Number(v) || 0;
+    }
+    return sum;
+  }
+
+  const p103 = sumRowRange(sheet, 103, 'D', 'O');
+  const p104 = sumRowRange(sheet, 104, 'D', 'O');
+  const p105 = p104 - p103;
+
+  // escribir en sheet para mantener consistencia con mostrarResultados
+  sheet['P103'] = { t: 'n', v: p103 };
+  sheet['P104'] = { t: 'n', v: p104 };
+  sheet['P105'] = { t: 'n', v: p105 };
+
+  return { palletParking: p103, tradicional: p104, ahorro: p105 };
+}
+
+// --- utilities ---
 function dumpCells(sheet, refs) {
   return refs.map(r => { const obj = sheet[r]; return { cell: r, present: !!obj, f: obj?.f ?? null, v: obj?.v ?? null, t: obj?.t ?? null }; });
 }
 
-document.querySelector(".btn-simular")?.addEventListener("click", async () => {
+// --- Main flow ---
+document.querySelector("#btnSimular")?.addEventListener("click", async () => {
   const uf = parseFloat(document.getElementById("valorUF")?.value);
   const pallets = parseInt(document.getElementById("pallets")?.value);
   const meses = parseInt(document.getElementById("meses")?.value);
@@ -133,12 +160,13 @@ document.querySelector(".btn-simular")?.addEventListener("click", async () => {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) throw new Error('Hoja no encontrada: ' + sheetName);
 
+    // escribir entradas/salidas
     const { inVals, outVals } = generarMovimientos(pallets, meses);
     for (let i = 0; i < 12; i++) { sheet['D' + (9 + i)] = { t: 'n', v: 0 }; sheet['E' + (9 + i)] = { t: 'n', v: 0 }; }
     for (let i = 0; i < meses; i++) { sheet['D' + (9 + i)] = { t: 'n', v: inVals[i] }; sheet['E' + (9 + i)] = { t: 'n', v: outVals[i] }; }
     sheet['W57'] = { t: 'n', v: uf };
 
-    console.log('Estado PRE-calc P103:P105:', dumpCells(sheet, ['P103','P104','P105']));
+    console.log('Estado previo P103:P105:', dumpCells(sheet, ['P103','P104','P105']));
 
     const created = ensureReferencedCellsExist(workbook);
     if (created.length) {
@@ -149,23 +177,25 @@ document.querySelector(".btn-simular")?.addEventListener("click", async () => {
 
     const calcFn = getCalcFnStrict();
     if (!calcFn) {
-      console.error('No se encontró función de cálculo xlsx-calc. No se podrá recalc en navegador.');
+      console.error('No se encontró función de cálculo xlsx-calc. Se aplica fallback manual para KPIs.');
+      computeManualKPIs(sheet);
       mostrarResultados(sheet, meses);
       return;
     }
     console.log('calcFn detectado:', calcFn);
 
-    try { await calcFn(workbook); }
-    catch (calcErr) {
-      console.error('Error ejecutando calcFn:', calcErr && calcErr.message ? calcErr.message : calcErr);
-      console.log('Estado POST-error P103:P105:', dumpCells(sheet, ['P103','P104','P105']));
-      mostrarResultados(sheet, meses);
-      return;
+    try {
+      await calcFn(workbook);
+      console.log('Recálculo con xlsx-calc OK');
+    } catch (calcErr) {
+      console.error('Error ejecutando calcFn, aplicando fallback manual:', calcErr && calcErr.message ? calcErr.message : calcErr);
+      computeManualKPIs(sheet);
     }
 
     console.log('Estado POST-calc P103:P105:', dumpCells(sheet, ['P103','P104','P105']));
     mostrarResultados(sheet, meses);
     console.log('Simulación completada en cliente. KPIs leídos (post-calc):', { palletParking: sheet['P103']?.v, tradicional: sheet['P104']?.v, ahorro: sheet['P105']?.v });
+
   } catch (err) {
     console.error('Error simulando en cliente:', err && err.stack || err);
     alert('Error en el proceso de simulación (ver consola). ' + (err && err.message ? err.message : ''));
