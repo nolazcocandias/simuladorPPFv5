@@ -40,78 +40,49 @@ function generarMovimientos(pallets, meses) {
 }
 
 // Nueva getCalcFn robusta: intenta varias heurísticas y busca en window globals
+// Reemplaza solo la función getCalcFn de tu script.js por esta versión más segura:
+
 function getCalcFn() {
-  const tried = [];
-
-  // heurísticas directas (nombres comunes)
-  const directNames = [
-    'XLSX_CALC', 'xlsx_calc', 'xlsx-calc', 'xlsxCalc', 'xlsxCalcLib', 'xlsxCalc', 'xlsxcalc', 'XlsxCalc'
-  ];
-  for (const name of directNames) {
-    const v = window[name];
-    if (v) {
-      tried.push({ name, type: typeof v, keys: Object.keys(v || {}) });
-      if (typeof v === 'function') {
-        console.log('xlsx-calc detected as function global:', name);
-        return v;
-      }
-      if (v && typeof v.default === 'function') {
-        console.log('xlsx-calc detected as object with default function global:', name);
-        return v.default;
-      }
-      if (v && typeof v.calc === 'function') {
-        console.log('xlsx-calc detected as object with calc method global:', name);
-        return v.calc;
-      }
-    } else {
-      tried.push({ name, found: false });
-    }
-  }
-
-  // heurística: buscar entre globals un objeto que tenga claves típicas (IFERROR, OFFSET) o default function
+  // 1) buscar objeto global que contenga claves típicas de xlsx-calc (IFERROR, OFFSET)
   const winKeys = Object.keys(window);
   for (const k of winKeys) {
     try {
       const val = window[k];
-      if (!val) continue;
-      // comprobar objetos/funciones que no sean DOM elements ni grandes browser APIs
-      const t = typeof val;
-      if (t !== 'object' && t !== 'function') continue;
+      if (!val || (typeof val !== 'object' && typeof val !== 'function')) continue;
       const keys = Object.keys(val || {});
-      // condición heurística: contiene IFERROR u OFFSET o tiene default function o calc function
-      if (keys.includes('IFERROR') || keys.includes('OFFSET') || keys.includes('IF') || keys.includes('OFFSET')) {
+      // heurística fuerte: debe contener claves de funciones de hoja de cálculo
+      if (keys.includes('IFERROR') || keys.includes('OFFSET') || keys.includes('VLOOKUP') || keys.includes('SUM')) {
         if (typeof val.default === 'function') {
-          console.log('xlsx-calc heurística: encontrado módulo con default function en window.', k);
-          tried.push({ detect: k, keys: keys.slice(0, 20) });
+          console.log('xlsx-calc detected at window.' + k + ' (default)');
           return val.default;
         }
         if (typeof val.calc === 'function') {
-          console.log('xlsx-calc heurística: encontrado módulo con calc function en window.', k);
-          tried.push({ detect: k, keys: keys.slice(0, 20) });
+          console.log('xlsx-calc detected at window.' + k + '.calc');
           return val.calc;
         }
-        // si el objeto en sí es función (UMD a veces exporta función directamente)
         if (typeof val === 'function') {
-          console.log('xlsx-calc heurística: encontrado función global en window.', k);
-          tried.push({ detect: k, keys: keys.slice(0, 20) });
+          // UMD que exporta función directamente
+          console.log('xlsx-calc detected as function at window.' + k);
           return val;
         }
       }
-      // caso donde el global es una función (poco común)
-      if (typeof val === 'function') {
-        // intentar usarlo si parece pequeño (no exhaustivo)
-        tried.push({ functionCandidate: k });
-        return val;
-      }
     } catch (e) {
-      // accesos a algunas propiedades pueden fallar; ignorar
+      // ignorar propiedades inaccesibles
     }
   }
-
-  console.warn('getCalcFn: intentos:', tried.slice(0, 10));
-  throw new Error('No se detectó función de cálculo xlsx-calc en el navegador (revisa que cargaste xlsx-calc antes de este script)');
+  // 2) si no se encontró nada, intentar comprobación explícita por nombres comunes (sin fallback a alert/otros)
+  const names = ['XLSX_CALC', 'xlsx_calc', 'xlsx-calc', 'xlsxCalc', 'xlsxCalcLib', 'xlsxcalc'];
+  for (const name of names) {
+    const v = window[name];
+    if (!v) continue;
+    if (typeof v === 'function') return v;
+    if (v && typeof v.default === 'function') return v.default;
+    if (v && typeof v.calc === 'function') return v.calc;
+  }
+  // 3) No devolver ninguna función equivocada; reportar el error de forma clara
+  console.warn('getCalcFn: No se detectó xlsx-calc entre globals. Evitando fallback inseguro.');
+  return null;
 }
-
 // Asegurar referencias faltantes como en la versión server
 function ensureReferencedCellsExist(workbook) {
   const created = [];
