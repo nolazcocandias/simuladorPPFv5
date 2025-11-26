@@ -3,7 +3,8 @@ async function obtenerUF() {
   try {
     const r = await fetch('https://mindicador.cl/api/uf');
     const d = await r.json();
-    document.getElementById('valorUF').value = Number(d.serie[0].valor).toFixed(2);
+    const ufInput = document.getElementById('valorUF');
+    if (ufInput) ufInput.value = Number(d.serie?.[0]?.valor ?? 0).toFixed(2);
   } catch (e) {
     console.warn('UF API error', e);
   }
@@ -11,13 +12,17 @@ async function obtenerUF() {
 
 window.addEventListener('load', obtenerUF);
 
-document.querySelector(".btn-simular").addEventListener("click", async () => {
-  const uf = parseFloat(document.getElementById("valorUF").value);
-  const pallets = parseInt(document.getElementById("pallets").value);
-  const meses = parseInt(document.getElementById("meses").value);
+document.querySelector(".btn-simular")?.addEventListener("click", async () => {
+  const uf = parseFloat(document.getElementById("valorUF")?.value);
+  const pallets = parseInt(document.getElementById("pallets")?.value);
+  const meses = parseInt(document.getElementById("meses")?.value);
 
   if (!uf || !pallets || !meses) {
-    alert("Por favor ingresa todos los datos.");
+    alert("Por favor ingresa UF, pallets y meses.");
+    return;
+  }
+  if (meses < 1 || meses > 12) {
+    alert("Meses debe estar entre 1 y 12.");
     return;
   }
 
@@ -28,27 +33,38 @@ document.querySelector(".btn-simular").addEventListener("click", async () => {
       body: JSON.stringify({ uf, pallets, meses })
     });
 
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`HTTP ${resp.status} - ${txt}`);
+    }
+
     const data = await resp.json();
 
-    // Mostrar resultados en tarjetas
-    document.querySelector("#pp-value").textContent = data.palletParking.toLocaleString("es-CL");
-    document.querySelector("#tradicional-value").textContent = data.tradicional.toLocaleString("es-CL");
-    document.querySelector("#ahorro-value").textContent = data.ahorro.toLocaleString("es-CL");
+    // Tarjetas
+    const ppEl = document.querySelector("#pp-value");
+    const tradEl = document.querySelector("#tradicional-value");
+    const ahoEl = document.querySelector("#ahorro-value");
+    if (ppEl) ppEl.textContent = Number(data.palletParking ?? 0).toLocaleString("es-CL");
+    if (tradEl) tradEl.textContent = Number(data.tradicional ?? 0).toLocaleString("es-CL");
+    if (ahoEl) ahoEl.textContent = Number(data.ahorro ?? 0).toLocaleString("es-CL");
 
-    // Renderizar tabla
-    const table = document.querySelector("table");
-    table.innerHTML = `<tr><th>Mes</th><th>Entradas</th><th>Salidas</th><th>Stock Final</th></tr>`;
-    data.tabla.forEach(row => {
-      table.innerHTML += `<tr>
-        <td>${row.mes}</td>
-        <td>${row.entradas}</td>
-        <td>${row.salidas}</td>
-        <td>${row.stock}</td>
-      </tr>`;
-    });
+    // Tabla
+    const tbody = document.querySelector("#tabla-resultados tbody");
+    if (tbody) {
+      tbody.innerHTML = "";
+      (data.tabla ?? []).forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.mes}</td>
+          <td>${row.entradas}</td>
+          <td>${row.salidas}</td>
+          <td>${row.stock}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
   } catch (error) {
     console.error("Error al simular:", error);
-    alert("Hubo un problema al procesar la simulación.");
+    alert("Hubo un problema al procesar la simulación. Revisa la consola para más detalles.");
   }
 });
-
