@@ -1,6 +1,5 @@
 // script.js (cliente): carga y recalcula el Excel en el navegador (sin backend)
-// Requisitos: tener simulacion.xlsx accesible en la misma carpeta (o ajustar EXCEL_PATH)
-// index.html ya incluye: xlsx.full.min.js y xlsx-calc.min.js
+// Requisitos: tener simulacion.xlsx accesible y que index.html cargue xlsx y xlsx-calc ANTES de este script
 
 const EXCEL_PATH = './simulacion.xlsx'; // ajustar si lo pones en otra ruta
 
@@ -14,10 +13,8 @@ async function obtenerUF() {
     console.warn('UF API error', e);
   }
 }
-
 window.addEventListener('load', obtenerUF);
 
-// Generador de movimientos (misma lógica que tenías en backend)
 function generarMovimientos(pallets, meses) {
   const inVals = new Array(meses).fill(0);
   for (let i = 0; i < pallets; i++) {
@@ -35,7 +32,6 @@ function generarMovimientos(pallets, meses) {
     }
     stock -= outVals[i];
   }
-
   if (stock !== 0) {
     outVals[meses - 1] += stock;
     stock = 0;
@@ -43,29 +39,80 @@ function generarMovimientos(pallets, meses) {
   return { inVals, outVals };
 }
 
-// Detectar la función de cálculo expuesta por el bundle xlsx-calc en el navegador
+// Nueva getCalcFn robusta: intenta varias heurísticas y busca en window globals
 function getCalcFn() {
-  // posibles nombres según bundling
-  const candidates = [
-    window.XLSX_CALC,
-    window.xlsx_calc,
-    window['xlsx-calc'],
-    window.xlsxCalc,
-    window['XLSX_CALC'],
-    window['xlsxCalc'],
-    window?.['default'] // improbable
+  const tried = [];
+
+  // heurísticas directas (nombres comunes)
+  const directNames = [
+    'XLSX_CALC', 'xlsx_calc', 'xlsx-calc', 'xlsxCalc', 'xlsxCalcLib', 'xlsxCalc', 'xlsxcalc', 'XlsxCalc'
   ];
-  for (const c of candidates) {
-    if (typeof c === 'function') return c;
-    if (c && typeof c.default === 'function') return c.default;
-    if (c && typeof c.calc === 'function') return c.calc;
+  for (const name of directNames) {
+    const v = window[name];
+    if (v) {
+      tried.push({ name, type: typeof v, keys: Object.keys(v || {}) });
+      if (typeof v === 'function') {
+        console.log('xlsx-calc detected as function global:', name);
+        return v;
+      }
+      if (v && typeof v.default === 'function') {
+        console.log('xlsx-calc detected as object with default function global:', name);
+        return v.default;
+      }
+      if (v && typeof v.calc === 'function') {
+        console.log('xlsx-calc detected as object with calc method global:', name);
+        return v.calc;
+      }
+    } else {
+      tried.push({ name, found: false });
+    }
   }
-  // último intento: algunos bundles exponen una función global llamada calc (poco común)
-  if (typeof window.calc === 'function') return window.calc;
-  throw new Error('No se detectó función de cálculo xlsx-calc en el navegador (revisa que cargaste xlsx-calc)');
+
+  // heurística: buscar entre globals un objeto que tenga claves típicas (IFERROR, OFFSET) o default function
+  const winKeys = Object.keys(window);
+  for (const k of winKeys) {
+    try {
+      const val = window[k];
+      if (!val) continue;
+      // comprobar objetos/funciones que no sean DOM elements ni grandes browser APIs
+      const t = typeof val;
+      if (t !== 'object' && t !== 'function') continue;
+      const keys = Object.keys(val || {});
+      // condición heurística: contiene IFERROR u OFFSET o tiene default function o calc function
+      if (keys.includes('IFERROR') || keys.includes('OFFSET') || keys.includes('IF') || keys.includes('OFFSET')) {
+        if (typeof val.default === 'function') {
+          console.log('xlsx-calc heurística: encontrado módulo con default function en window.', k);
+          tried.push({ detect: k, keys: keys.slice(0, 20) });
+          return val.default;
+        }
+        if (typeof val.calc === 'function') {
+          console.log('xlsx-calc heurística: encontrado módulo con calc function en window.', k);
+          tried.push({ detect: k, keys: keys.slice(0, 20) });
+          return val.calc;
+        }
+        // si el objeto en sí es función (UMD a veces exporta función directamente)
+        if (typeof val === 'function') {
+          console.log('xlsx-calc heurística: encontrado función global en window.', k);
+          tried.push({ detect: k, keys: keys.slice(0, 20) });
+          return val;
+        }
+      }
+      // caso donde el global es una función (poco común)
+      if (typeof val === 'function') {
+        // intentar usarlo si parece pequeño (no exhaustivo)
+        tried.push({ functionCandidate: k });
+        return val;
+      }
+    } catch (e) {
+      // accesos a algunas propiedades pueden fallar; ignorar
+    }
+  }
+
+  console.warn('getCalcFn: intentos:', tried.slice(0, 10));
+  throw new Error('No se detectó función de cálculo xlsx-calc en el navegador (revisa que cargaste xlsx-calc antes de este script)');
 }
 
-// Función para asegurar que las referencias en fórmulas tengan objeto en sheet (evita undefined .calc)
+// Asegurar referencias faltantes como en la versión server
 function ensureReferencedCellsExist(workbook) {
   const created = [];
   const cellRefRegex = /(?:(?:'([^']+)'|([A-Za-z0-9_]+))!)?([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?/g;
@@ -131,7 +178,7 @@ function ensureReferencedCellsExist(workbook) {
   return created;
 }
 
-// Flow principal al pulsar "Simular"
+// Flow principal
 document.querySelector(".btn-simular")?.addEventListener("click", async () => {
   const uf = parseFloat(document.getElementById("valorUF")?.value);
   const pallets = parseInt(document.getElementById("pallets")?.value);
@@ -147,18 +194,14 @@ document.querySelector(".btn-simular")?.addEventListener("click", async () => {
   }
 
   try {
-    // 1) Cargar el archivo XLSX como ArrayBuffer
     const r = await fetch(EXCEL_PATH);
     if (!r.ok) throw new Error('No se pudo descargar ' + EXCEL_PATH + ' (status ' + r.status + ')');
     const arrayBuffer = await r.arrayBuffer();
-
-    // 2) Leer workbook en memoria
     const workbook = XLSX.read(arrayBuffer, { type: 'array', cellNF: true, cellDates: true });
     const sheetName = workbook.SheetNames.includes('cliente') ? 'cliente' : workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) throw new Error('Hoja no encontrada en workbook: ' + sheetName);
 
-    // 3) Generar movimientos y escribir D9:D20, E9:E20, W57
     const { inVals, outVals } = generarMovimientos(pallets, meses);
 
     for (let i = 0; i < 12; i++) {
@@ -171,15 +214,15 @@ document.querySelector(".btn-simular")?.addEventListener("click", async () => {
     }
     sheet['W57'] = { t: 'n', v: uf };
 
-    // 4) Asegurar referencias faltantes para evitar errores .calc undefined
     const created = ensureReferencedCellsExist(workbook);
     if (created.length) console.log('Se crearon celdas faltantes (cliente-side):', created.slice(0,200));
 
-    // 5) Ejecutar xlsx-calc en el navegador
+    // detectar y ejecutar función de cálculo
     const calcFn = getCalcFn();
-    await calcFn(workbook); // recalcula fórmulas en memoria
+    console.log('calcFn detected:', calcFn);
+    await calcFn(workbook);
 
-    // 6) Leer resultados (tabla y KPIs)
+    // leer resultados
     const tabla = [];
     for (let i = 0; i < meses; i++) {
       const rnum = 9 + i;
@@ -193,7 +236,6 @@ document.querySelector(".btn-simular")?.addEventListener("click", async () => {
     const tradicional = sheet['P104']?.v || 0;
     const ahorro = sheet['P105']?.v ?? (tradicional - palletParking);
 
-    // 7) Mostrar resultados en la UI (ids que tiene tu HTML)
     const setIfExists = (selector, value) => {
       const el = document.querySelector(selector);
       if (el) el.textContent = value;
