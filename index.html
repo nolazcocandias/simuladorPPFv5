@@ -4,51 +4,60 @@
 <head>
   <meta charset="UTF-8">
   <title>Simulador PalletParking</title>
+  style.css
   https://cdn.jsdelivr.net/npm/chart.js</script>
   script.js</script>
 </head>
 <body>
-  <h1>Simulador PalletParking</h1>
-  <p>Logo PalletParking</p>
-  <h2>Simulador de Costos</h2>
+  <header class="pp-header">
+    <h1 class="titulo">Simulador PalletParking</h1>
+  </header>
 
-  <label>UF (CLP):</label>
-  <input type="text" id="inputUF" placeholder="UF opcional"><br><br>
+  <main style="padding:20px;">
+    <div>
+      <label>Cantidad de pallets:</label>
+      <input type="number" id="inputPallets" placeholder="Ej: 600"><br><br>
 
-  <label>Cantidad de pallets:</label>
-  <input type="number" id="inputPallets" placeholder="Ej: 600"><br><br>
+      <label>Meses de operación (1-12):</label>
+      <input type="number" id="inputMeses" min="1" max="12" placeholder="Ej: 6"><br><br>
 
-  <label>Meses de operación (1-12):</label>
-  <input type="number" id="inputMeses" min="1" max="12" placeholder="Ej: 6"><br><br>
+      <button class="btn-simular" onclick="calcular()">Simular</button>
+    </div>
 
-  <button onclick="calcular()">Simular</button>
+    <section style="margin-top:20px; display:flex; gap:20px;">
+      <div class="card-resumen">
+        <h5>PalletParking</h5>
+        <p id="tarjetaPP" class="kpi-value">–</p>
+      </div>
+      <div class="card-resumen">
+        <h5>Tradicional</h5>
+        <p id="tarjetaTrad" class="kpi-value">–</p>
+      </div>
+      <div class="card-resumen ahorro">
+        <h5>Ahorro</h5>
+        <p id="tarjetaAhorro" class="kpi-value">–</p>
+      </div>
+    </section>
 
-  <hr>
-  <h4>PalletParking</h4>
-  <p id="tarjetaPP">– CLP: $–</p>
+    <section style="margin-top:30px;">
+      <h3>Resultados por mes</h3>
+      <table class="table" border="1" style="width:100%; text-align:center;">
+        <thead>
+          <tr>
+            <th>Mes</th>
+            <th>Entradas</th>
+            <th>Salidas</th>
+            <th>Stock Final</th>
+          </tr>
+        </thead>
+        <tbody id="tablaResultados"></tbody>
+      </table>
+    </section>
 
-  <h4>Tradicional</h4>
-  <p id="tarjetaTrad">– CLP: $–</p>
-
-  <h4>Ahorro</h4>
-  <p id="tarjetaAhorro">– CLP: $–</p>
-
-  <hr>
-  <h3>Resultados por mes</h3>
-  <table border="1">
-    <thead>
-      <tr>
-        <th>Mes</th>
-        <th>Entradas</th>
-        <th>Salidas</th>
-        <th>Stock Final</th>
-      </tr>
-    </thead>
-    <tbody id="tablaResultados"></tbody>
-  </table>
-
-  <hr>
-  <h3>Gráfico comparativo</h3>
-  <canvas id="graficoCostos" width="400" height="200"></canvas>
+    <section style="margin-top:30px;">
+      <h3>Gráfico comparativo</h3>
+      <canvas id="graficoCostos" width="400" height="200"></canvas>
+    </section>
+  </main>
 </body>
 </html>
