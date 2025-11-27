@@ -1,5 +1,6 @@
 // URL de tu backend en Vercel
-const API_URL = 'https://vercel-libreoffice-project.vercel.app/api/calcular';
+const API_URL = 'https://vercel-libreoffice-project-vhat.vercel.app/calcular';
+
 
 async function calcular() {
   const estado = document.getElementById('estado');
