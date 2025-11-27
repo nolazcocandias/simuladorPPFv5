@@ -1,63 +1,74 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Simulador PalletParking</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="script.js" defer></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulador PPF v5</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="pp-header">
-    <h1 class="titulo">Simulador PalletParking</h1>
+  <header>
+    <h1>Simulador PPF v5</h1>
+    <p>Frontend en GitHub Pages + Backend en Vercel</p>
   </header>
 
-  <main style="padding:20px;">
-    <div>
-      <label>Cantidad de pallets:</label>
-      <input type="number" id="inputPallets" placeholder="Ej: 600"><br><br>
-
-      <label>Meses de operación (1-12):</label>
-      <input type="number" id="inputMeses" min="1" max="12" placeholder="Ej: 6"><br><br>
-
-      <button class="btn-simular" onclick="calcular()">Simular</button>
-    </div>
-
-    <section style="margin-top:20px; display:flex; gap:20px;">
-      <div class="card-resumen">
-        <h5>PalletParking</h5>
-        <p id="tarjetaPP" class="kpi-value">–</p>
+  <main>
+    <section class="formulario">
+      <h2>Parámetros</h2>
+      <div class="campo">
+        <label for="cantidad_pallets">Cantidad de pallets</label>
+        <input id="cantidad_pallets" type="number" min="0" placeholder="Ej. 100" />
       </div>
-      <div class="card-resumen">
-        <h5>Tradicional</h5>
-        <p id="tarjetaTrad" class="kpi-value">–</p>
+      <div class="campo">
+        <label for="meses_operacion">Meses de operación (1–12)</label>
+        <input id="meses_operacion" type="number" min="1" max="12" value="12" />
       </div>
-      <div class="card-resumen ahorro">
-        <h5>Ahorro</h5>
-        <p id="tarjetaAhorro" class="kpi-value">–</p>
+      <button id="btnCalcular" onclick="calcular()">Calcular</button>
+      <p id="estado" class="estado"></p>
+    </section>
+
+    <section class="tarjetas">
+      <h2>Resultados (Tarjetas)</h2>
+      <div class="tarjeta">
+        <h3>Pallet Parking</h3>
+        <div id="pallet_parking" class="valor">-</div>
+      </div>
+      <div class="tarjeta">
+        <h3>Tradicional</h3>
+        <div id="tradicional" class="valor">-</div>
+      </div>
+      <div class="tarjeta ahorro">
+        <h3>Ahorro</h3>
+        <div id="ahorro" class="valor">-</div>
       </div>
     </section>
 
-    <section style="margin-top:30px;">
-      <h3>Resultados por mes</h3>
-      <table class="table" border="1" style="width:100%; text-align:center;">
+    <section class="tabla-section">
+      <h2>Tabla de movimientos</h2>
+      <table id="tabla-resultados">
         <thead>
           <tr>
             <th>Mes</th>
-            <th>Entradas</th>
-            <th>Salidas</th>
-            <th>Stock Final</th>
+            <th>Ingresos (IN)</th>
+            <th>Salidas (OUT)</th>
+            <th>Stock</th>
           </tr>
         </thead>
-        <tbody id="tablaResultados"></tbody>
+        <tbody></tbody>
       </table>
     </section>
 
-    <section style="margin-top:30px;">
-      <h3>Gráfico comparativo</h3>
-      <canvas id="graficoCostos" width="400" height="200"></canvas>
+    <section class="grafico-section">
+      <h2>Costos (PP vs Tradicional)</h2>
+      <canvas id="graficoCostos" width="800" height="300" aria-label="Gráfico de costos"></canvas>
+      <p class="nota">*El gráfico se dibuja con Canvas sin librerías externas.</p>
     </section>
   </main>
+
+  <footer>
+    <small>© 2025 Simulador PPF v5</small>
+  </footer>
+
+  <script src="script.js"></script>
 </body>
 </html>

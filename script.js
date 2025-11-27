@@ -1,63 +1,117 @@
+// URL de tu backend en Vercel
+const API_URL = 'https://vercel-libreoffice-project.vercel.app/api/calcular';
 
 async function calcular() {
-  const pallets = document.getElementById("inputPallets").value;
-  const meses = document.getElementById("inputMeses").value;
+  const estado = document.getElementById('estado');
+  estado.textContent = 'Enviando solicitud al backend…';
 
-  if (!pallets || !meses) {
-    alert("Por favor ingresa cantidad de pallets y meses.");
-    return;
-  }
+  const cantidadPallets = Number(document.getElementById('cantidad_pallets').value || 0);
+  const mesesOperacion = Number(document.getElementById('meses_operacion').value || 12);
+
+  const payload = {
+    cantidad_pallets: cantidadPallets,
+    meses_operacion: mesesOperacion
+  };
 
   try {
-    const response = await fetch("https://vercel-libreoffice-project.vercel.app/api/calcular", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cantidad_pallets: pallets, meses_operacion: meses })
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
-      throw new Error("Error en la API");
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${txt}`);
     }
 
-    const data = await response.json();
+    const data = await resp.json();
+    estado.textContent = 'OK';
 
-    document.getElementById("tarjetaPP").innerText = `PalletParking: ${data.tarjetas.pallet_parking}`;
-    document.getElementById("tarjetaTrad").innerText = `Tradicional: ${data.tarjetas.tradicional}`;
-    document.getElementById("tarjetaAhorro").innerText = `Ahorro: ${data.tarjetas.ahorro}`;
+    // Tarjetas
+    setText('pallet_parking', safeNumber(data?.tarjetas?.pallet_parking));
+    setText('tradicional', safeNumber(data?.tarjetas?.tradicional));
+    setText('ahorro', safeNumber(data?.tarjetas?.ahorro));
 
-    const tablaHTML = data.tabla.map(row => `
-      <tr>
-        <td>${row.mes}</td>
-        <td>${row.in}</td>
-        <td>${row.out}</td>
-        <td>${row.stock}</td>
-      </tr>
-    `).join("");
-    document.getElementById("tablaResultados").innerHTML = tablaHTML;
+    // Tabla
+    const tbody = document.querySelector('#tabla-resultados tbody');
+    tbody.innerHTML = '';
+    (data?.tabla || []).forEach(row => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${row.mes ?? '-'}</td>
+        <td>${safeNumber(row.in)}</td>
+        <td>${safeNumber(row.out)}</td>
+        <td>${safeNumber(row.stock)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
 
-    const mesesLabels = data.tabla.map(row => `Mes ${row.mes}`);
-    const costosPP = data.costos.pallet_parking.slice(0, meses);
-    const costosTrad = data.costos.tradicional.slice(0, meses);
+    // Gráfico simple con Canvas
+    dibujarGrafico(
+      document.getElementById('graficoCostos'),
+      data?.costos?.pallet_parking || [],
+      data?.costos?.tradicional || []
+    );
 
-    if (typeof Chart !== "undefined") {
-      const ctx = document.getElementById("graficoCostos").getContext("2d");
-      if (window.graficoCostos) {
-        window.graficoCostos.destroy();
-      }
-      window.graficoCostos = new Chart(ctx, {
-        type: "bar",
-        data: {
-          labels: mesesLabels,
-          datasets: [
-            { label: "PalletParking", data: costosPP, backgroundColor: "rgba(54, 162, 235, 0.6)" },
-            { label: "Tradicional", data: costosTrad, backgroundColor: "rgba(255, 99, 132, 0.6)" }
-          ]
-        },
-        options: { responsive: true, plugins: { title: { display: true, text: "Comparación de costos mensuales" } } }
-      });
-    }
-  } catch (error) {
-    console.error(error);
-    alert("Hubo un error al calcular. Intenta nuevamente.");
+  } catch (err) {
+    console.error('Error en calcular:', err);
+    estado.textContent = 'Error: ' + err.message;
+    alert('No se pudo calcular. Revisa la consola (F12 → Console) para detalles.');
   }
 }
+
+function setText(id, value) {
+  document.getElementById(id).textContent = value ?? '-';
+}
+function safeNumber(v) {
+  if (v === null || v === undefined || Number.isNaN(Number(v))) return '-';
+  const n = Number(v);
+  return Intl.NumberFormat('es-CL').format(n);
+}
+
+function dibujarGrafico(canvas, seriePP, serieTrad) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const padding = 40;
+  const w = canvas.width - padding * 2;
+  const h = canvas.height - padding * 2;
+  const x0 = padding;
+  const y0 = padding + h;
+
+  const maxVal = Math.max(1, ...seriePP.filter(Number.isFinite), ...serieTrad.filter(Number.isFinite));
+
+  // Ejes
+  ctx.strokeStyle = '#333';
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x0 + w, y0);
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x0, y0 - h);
+  ctx.stroke();
+
+  const stepX = w / 11; // 12 meses
+
+  // Función para dibujar una serie
+  function drawSeries(serie, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 12; i++) {
+      const val = Number(serie[i] || 0);
+      const x = x0 + stepX * i;
+      const y = y0 - (val / maxVal) * h;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  drawSeries(seriePP, '#0f62fe');
+  drawSeries(serieTrad, '#20a36e');
+}
+
+// Atajos de teclado (Enter para calcular)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') calcular();
+});
